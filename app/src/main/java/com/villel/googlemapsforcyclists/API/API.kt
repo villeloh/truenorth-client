@@ -6,8 +6,11 @@ import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.Path
 
-
 interface API {
+
+    companion object {
+        const val BASE_URL = "https://us-central1-truenorth-backend.cloudfunctions.net/"
+    }
 
     @Headers("Content-Type: application/json")
     @GET("test")

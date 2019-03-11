@@ -16,6 +16,8 @@ import com.google.android.gms.maps.*
 
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.gms.maps.model.Polyline
+import com.google.android.gms.maps.model.PolylineOptions
 import com.google.gson.Gson
 import com.villel.googlemapsforcyclists.API.API
 import retrofit2.Call
@@ -37,7 +39,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
     // for constants
     companion object {
 
-        private const val BASE_URL = "https://us-central1-truenorth-backend.cloudfunctions.net/"
         private const val MAX_ZOOM = 20f
         private const val MIN_ZOOM = 4f
         private const val DEFAULT_MAP_TYPE = GoogleMap.MAP_TYPE_NORMAL
@@ -46,9 +47,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             android.Manifest.permission.ACCESS_FINE_LOCATION,
             android.Manifest.permission.ACCESS_NETWORK_STATE,
             android.Manifest.permission.INTERNET)
-        /*val MY_PERMISSIONS_REQUEST_FINE_LOCATION = 77 // just some random number
-        private const val MY_PERMISSIONS_REQUEST_INTERNET = 78
-        private const val MY_PERMISSIONS_REQUEST_NETWORK_STATE = 79*/
         private const val CAMERA_MOVE_THRESHOLD = 0.0001
 
         // it works like a constant so why not put it here
@@ -117,7 +115,7 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             .setLenient()
             .create()
         retrofit = Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(API.BASE_URL)
             .client(finalClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
@@ -194,10 +192,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
 
             map.clear()
             destination = clickedPoint
-            val from = lastKnownLocation
-            placeMarkerAt(clickedPoint)
+            val fromPoint = lastKnownLocation
+
             Log.d("VITTU", "clicked point: " + destination)
-            if (from != null) {
+            if (fromPoint != null) {
+
+                placeMarkerAt(clickedPoint)
+                drawPolyLine(fromPoint, clickedPoint)
 
                 val call = api.test()
                 call.enqueue(object : Callback<Test> {
@@ -259,6 +260,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             // isMapToolbarEnabled = true // true by default ??
             isTiltGesturesEnabled = false
         }
+
+        // Set listeners for polyline click events.
+        map.setOnPolylineClickListener { _ -> Log.d("VITTU", "clicked on polyline!") }
+        // map.setOnPolygonClickListener(this)
     } // setupMap
 
     // ********************* PERMISSIONS *******************************************************************************
@@ -339,13 +344,13 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
 
     private fun moveCameraTo(destination: LatLng?) {
 
+        destination ?: return
         map.moveCamera(CameraUpdateFactory.newLatLng(destination))
     }
 
     private fun placeMarkerAt(destination: LatLng) {
 
-        map.clear() // removes all markers, polylines, etc
-        map.addMarker(MarkerOptions().position(destination).title("Marker at $destination")) // TODO: convert to address
+        map.addMarker(MarkerOptions().position(destination).title("Marker at $destination")) // TODO: convert lat/long to address
     }
 
     // determine if the camera should move to a new location (follow the user as they move)
@@ -356,6 +361,20 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
         if (Math.abs(from.latitude) - Math.abs(to.latitude) > CAMERA_MOVE_THRESHOLD) return true
         if (Math.abs(from.longitude) - Math.abs(to.longitude) > CAMERA_MOVE_THRESHOLD) return true
         return false
+    }
+
+    private fun drawPolyLine(vararg latLngs: LatLng) {
+
+        val list = mutableListOf<LatLng>()
+        list.addAll(latLngs)
+        val polyline = map.addPolyline((PolylineOptions())
+                .clickable(true)
+                .addAll(list))
+    } // drawPolyLine
+
+    private fun stylePolyLine(polyline: Polyline) {
+
+        // TODO: style it according to these instructions: https://developers.google.com/maps/documentation/android-sdk/polygon-tutorial
     }
 
 } // MapsActivity
