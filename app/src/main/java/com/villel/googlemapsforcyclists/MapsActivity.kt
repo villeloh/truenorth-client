@@ -1,16 +1,13 @@
 package com.villel.googlemapsforcyclists
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.location.Location
-import android.os.AsyncTask
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import com.google.android.gms.location.*
 import com.google.android.gms.maps.*
 
@@ -26,12 +23,10 @@ import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import com.google.gson.GsonBuilder
-import com.google.gson.JsonParseException
-import com.google.gson.JsonSyntaxException
-import com.villel.googlemapsforcyclists.API.Test
+import com.google.maps.android.PolyUtil
+import com.villel.googlemapsforcyclists.API.Route
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
-import java.io.IOException
 
 
 class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnRequestPermissionsResultCallback {
@@ -55,7 +50,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             fastestInterval = 5000
             priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         }
-
     } // companion object
 
     private lateinit var map: GoogleMap
@@ -63,11 +57,10 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
     private lateinit var locationCallback: LocationCallback
     private lateinit var retrofit: Retrofit
     private lateinit var api: API
+    lateinit var gson: Gson
     private var lastKnownLocation: LatLng? = null
     private var destination: LatLng? = null
     private var permissionsGranted = false
-
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,6 +72,8 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
         mapFragment.getMapAsync(this)
 
         handlePermissions()
+
+        gson = Gson()
 
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
@@ -102,22 +97,19 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             } // onLocationResult
         } // locationCallback
 
-
-        // compile 'com.squareup.okhttp3:logging-interceptor:3.13.1'
-
-        var client = OkHttpClient.Builder()
+        val client = OkHttpClient.Builder()
         val interceptor = HttpLoggingInterceptor(HttpLoggingInterceptor.Logger { msg -> Log.d("VITTU", "body: " + msg) })
         interceptor.level = HttpLoggingInterceptor.Level.BODY
         client.interceptors().add(interceptor)
         val finalClient = client.build()
 
-        val gson = GsonBuilder()
+        val gson2 = GsonBuilder()
             .setLenient()
             .create()
         retrofit = Retrofit.Builder()
             .baseUrl(API.BASE_URL)
-            .client(finalClient)
-            .addConverterFactory(GsonConverterFactory.create(gson))
+            // .client(finalClient) // enable to view logs
+            .addConverterFactory(GsonConverterFactory.create(gson2))
             .build()
         api = retrofit.create(API::class.java)
 
@@ -197,50 +189,30 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             Log.d("VITTU", "clicked point: " + destination)
             if (fromPoint != null) {
 
-                placeMarkerAt(clickedPoint)
-                drawPolyLine(fromPoint, clickedPoint)
-
-                val call = api.test()
-                call.enqueue(object : Callback<Test> {
-
-                    override fun onResponse(call: Call<Test>?, response: Response<Test>?) {
-
-                        if (response != null && response.isSuccessful) {
-
-                            Log.d("VITTU", "test response: " + response.body())
-
-                        } else {
-                            // pokemonListListener.onFailure(appContext.getString(R.string.error_fetching_data))
-                        }
-                    }
-
-                    override fun onFailure(call: Call<Test>?, t: Throwable?) {
-
-                        Log.d("VITTU", "test failure msg: " + t!!.cause)
-                        Log.d("VITTU", (t is JsonParseException).toString())
-                        // Log.d("VITTU", "failure call: " + call!!.request().toString())
-                    }
-                }) // call.enqueue
-
                 // TODO: replace this mess with RxJava ??
-              /*  val call = api.fetchRoute(from, clickedPoint)
-                call.enqueue(object : Callback<List<LatLng>> {
+              val call = api.fetchRoute(gson.toJson(fromPoint), gson.toJson(clickedPoint))
+                call.enqueue(object : Callback<Route> {
 
-                    override fun onResponse(call: Call<List<LatLng>>?, response: Response<List<LatLng>>?) {
+                    override fun onResponse(call: Call<Route>?, response: Response<Route>?) {
 
                         if (response != null && response.isSuccessful) {
 
-                            // pokemonListListener.onSuccess(response.body())
+                            val encodedPolylinePoints = response.body()!!.points
+                            val decodedPoints = PolyUtil.decode(encodedPolylinePoints)
+
+                            drawPolyLine(decodedPoints)
+                            placeMarkerAt(clickedPoint)
                         } else {
                             // pokemonListListener.onFailure(appContext.getString(R.string.error_fetching_data))
                         }
                     }
 
-                    override fun onFailure(call: Call<List<LatLng>>?, t: Throwable?) {
+                    override fun onFailure(call: Call<Route>?, t: Throwable?) {
 
+                        Log.d("VITTU", "route failure msg: " + t!!.toString())
                         // pokemonListListener.onFailure(appContext.getString(R.string.error_fetching_data))
                     }
-                }) // call.enqueue */
+                }) // call.enqueue
             } // if
         } // setOnMapClickListener
 
@@ -306,8 +278,6 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
             ALL_PERMISSIONS -> {
                 // If request is cancelled, the result arrays are empty.
                 if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
-                    // permission was granted, yay! Do the
-                    // task you need to do.
 
                     handlePermissions()
                 } else {
@@ -363,14 +333,12 @@ class MapsActivity : AppCompatActivity(), OnMapReadyCallback, ActivityCompat.OnR
         return false
     }
 
-    private fun drawPolyLine(vararg latLngs: LatLng) {
+    private fun drawPolyLine(points: List<LatLng>) {
 
-        val list = mutableListOf<LatLng>()
-        list.addAll(latLngs)
-        val polyline = map.addPolyline((PolylineOptions())
-                .clickable(true)
-                .addAll(list))
-    } // drawPolyLine
+        map.addPolyline((PolylineOptions())
+            .clickable(true)
+            .addAll(points))
+    }
 
     private fun stylePolyLine(polyline: Polyline) {
 

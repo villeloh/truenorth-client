@@ -1,5 +1,4 @@
 package com.villel.googlemapsforcyclists.API
 
-class Test(val res: String) {
-    
+class Route(val points: String) {
 }
